@@ -85,6 +85,7 @@ import {
   listProjects,
   putProject,
 } from '@/lib/project-store';
+import { restoreDirectory, chooseDirectory, directoryName, directoryPermission, scanProjects } from '@/lib/project-directory';
 import { getRDKit, Molecule, Scatter, color } from '@/components/chem-views';
 import {
   Mol,
@@ -177,6 +178,23 @@ export default function Home() {
     [projects, setProjects] = useState<StoredProject[]>([]),
     [lastSavedAt, setLastSavedAt] = useState<string | null>(null),
     [hasUnsaved, setHasUnsaved] = useState(false);
+  const [projectNotes, setProjectNotes] = useState('');
+  const [directoryLabel, setDirectoryLabel] = useState('');
+  const [directoryStatus, setDirectoryStatus] = useState('尚未指定项目目录');
+  const [directoryWarnings, setDirectoryWarnings] = useState<string[]>([]);
+  const [directoryBusy, setDirectoryBusy] = useState(false);
+  const [closedIds, setClosedIds] = useState<string[]>([]);
+  const [openIds, setOpenIds] = useState<string[]>([]);
+  const [workspaceEmpty, setWorkspaceEmpty] = useState(false);
+  const [closeTarget, setCloseTarget] = useState<string | null>(null);
+  const [metadataOpen, setMetadataOpen] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [metadataName, setMetadataName] = useState('');
+  const [metadataNotes, setMetadataNotes] = useState('');
+  const [pendingMetadataSave, setPendingMetadataSave] = useState(false);
+  const saveLock = useRef(false);
+  const savedProjectId = useRef('');
+  const initializedDemo = useRef(false);
   const suppressDirty = useRef(true);
   const dirtyVersion = useRef(0);
   const [rows, setRows] = useState<Mol[]>([]),
@@ -266,14 +284,21 @@ export default function Home() {
 
   const refreshProjects = useCallback(async () => {
     try {
-      setProjects(await listProjects());
-    } catch {
-      setMessage('本机项目库暂不可用；仍可下载项目文件备份。');
+      if (directoryName()) {
+        const result = await scanProjects();
+        setProjects(result.entries); setDirectoryWarnings(result.warnings);
+        setDirectoryStatus('已检索 ' + result.entries.length + ' 个项目文件');
+      } else setProjects(await listProjects());
+    } catch (e) {
+      setDirectoryStatus((e as Error).message);
     }
   }, []);
 
   useEffect(() => {
-    void refreshProjects();
+    void (async () => {
+      try { setDirectoryLabel(await restoreDirectory()); await refreshProjects(); }
+      catch (e) { setDirectoryStatus((e as Error).message); }
+    })();
     let saved = sessionStorage.getItem('pocket-atlas-engine');
     const prefix = '#pocket-atlas-connection=';
     if (window.location.hash.startsWith(prefix)) {
@@ -333,6 +358,7 @@ export default function Home() {
     if (!suppressDirty.current) setHasUnsaved(true);
   }, [
     raw,
+    projectNotes,
     candidateLimit,
     pageSize,
     selected,
@@ -407,6 +433,14 @@ export default function Home() {
           setRaw(context.text);
           setMapping(context.map);
           setDataset(context.name);
+          setWorkspaceEmpty(false);
+          if (!context.demo && !context.restore && results.length) {
+            setProjectId('project-' + crypto.randomUUID());
+            setProjectNotes(''); setInteractionCache({});
+            setLastSavedAt(null); setHasUnsaved(true);
+            setMetadataName(context.name); setMetadataNotes('');
+            setCreatingProject(true); setMetadataOpen(true);
+          }
           setIsDemo(context.demo);
           setWarnings(context.warnings);
           setQuery('');
@@ -453,6 +487,8 @@ export default function Home() {
   }, []);
   useEffect(() => {
     const timer = setTimeout(() => {
+      if (initializedDemo.current) return;
+      initializedDemo.current = true;
       const p = parseInput(demo),
         made = makeRecords(p, p.mapping);
       run(
@@ -814,6 +850,7 @@ export default function Home() {
     }
   }
   async function loadStructureData(file: File) {
+    if (hasUnsaved && !isDemo && rows.length && !(await saveToWorkspace(true))) return;
     setBusy(true);
     setStage('读取结构与原始坐标');
     setProgress(3);
@@ -905,7 +942,8 @@ export default function Home() {
       setMessage((e as Error).message);
     }
   }
-  function importData() {
+  async function importData() {
+    if (hasUnsaved && !isDemo && rows.length && !(await saveToWorkspace(true))) return;
     try {
       if (!parsed || !draftMap) throw Error('请先解析数据并指定 SMILES 列。');
       const made = makeRecords(parsed, draftMap);
@@ -930,6 +968,8 @@ export default function Home() {
     return {
       format: 'pocket-atlas-project-v1',
       name: dataset,
+      projectNotes,
+      moleculeCount: rows.length,
       isDemo,
       raw,
       mapping,
@@ -949,11 +989,12 @@ export default function Home() {
   }
 
   async function saveToWorkspace(silent = false) {
-    if (!rows.length || busy) return false;
+    if (!rows.length || busy || saveLock.current) return false;
+    saveLock.current = true;
     try {
       const savedVersion = dirtyVersion.current;
       const payload = projectPayload();
-      await putProject({
+      const stored = await putProject({
         id: projectId,
         name: dataset,
         savedAt: payload.savedAt,
@@ -961,21 +1002,25 @@ export default function Home() {
         selectedCount: selected.length,
         payload,
       });
+      savedProjectId.current = stored.id;
+      setOpenIds((ids) => Array.from(new Set([...ids, stored.id])));
+      setProjectId(stored.id);
+      setClosedIds((ids) => ids.filter((id) => id !== stored.id));
       setLastSavedAt(payload.savedAt);
       if (savedVersion === dirtyVersion.current) setHasUnsaved(false);
-      localStorage.setItem('pocket-atlas-active-project', projectId);
+      localStorage.setItem('pocket-atlas-active-project', stored.id);
       await refreshProjects();
-      if (!silent) setMessage('项目已保存到本机项目库。');
+      if (!silent) setMessage(directoryName() ? '项目已写入所选目录。' : '项目已保存到浏览器本机存储；可指定项目目录保存为文件。');
       return true;
     } catch (e) {
-      setMessage('自动保存失败：' + (e as Error).message);
+      setMessage('项目保存失败：' + (e as Error).message);
       return false;
-    }
+    } finally { saveLock.current = false; }
   }
 
   const autosave = useRef(() => {});
   autosave.current = () => {
-    if (hasUnsaved && rows.length && !busy) void saveToWorkspace(true);
+    if (hasUnsaved && !isDemo && rows.length && !busy && !metadataOpen && !closeTarget) void saveToWorkspace(true);
   };
   useEffect(() => {
     const timer = window.setInterval(
@@ -1019,7 +1064,10 @@ export default function Home() {
       )
         throw Error('不是受支持的 Maestro Illustrator 项目文件');
       suppressDirty.current = true;
-      if (id) setProjectId(id);
+      setProjectNotes(typeof p.projectNotes === 'string' ? p.projectNotes : '');
+      setWorkspaceEmpty(false);
+      setClosedIds((ids) => ids.filter((key) => key !== id));
+      if (id) { setProjectId(id); setOpenIds((ids) => Array.from(new Set([...ids, id]))); }
       setCandidateLimit(Number.isSafeInteger(p.candidateLimit) && p.candidateLimit > 0 ? p.candidateLimit : null);
       setPageSize([20, 50, 100].includes(p.pageSize) ? p.pageSize : 20);
       setPoses(p.poses || {});
@@ -1085,7 +1133,7 @@ export default function Home() {
       setMessage('请先停止互作批量计算，再打开项目。');
       return;
     }
-    if (hasUnsaved && rows.length && !(await saveToWorkspace(true))) return;
+    if (hasUnsaved && !isDemo && rows.length && !(await saveToWorkspace(true))) return;
     if (file.size > 600 * 1024 * 1024) {
       setMessage('项目载入失败：项目文件过大');
       return;
@@ -1101,8 +1149,8 @@ export default function Home() {
 
   async function switchProject(id: string) {
     if (id === projectId || busy || batchBusy) return;
-    if (hasUnsaved && !(await saveToWorkspace(true))) return;
-    const stored = await getProject(id);
+    if (hasUnsaved && !isDemo && !(await saveToWorkspace(true))) return;
+    const stored = await getProject(id).catch((e) => { setMessage((e as Error).message); return undefined; });
     if (!stored) {
       setMessage('未找到该本机项目。');
       return;
@@ -1116,11 +1164,13 @@ export default function Home() {
       setMessage('请先停止互作批量计算，再新建项目。');
       return;
     }
-    if (hasUnsaved && !(await saveToWorkspace(true))) return;
+    if (hasUnsaved && !isDemo && !(await saveToWorkspace(true))) return;
     suppressDirty.current = true;
     const id = 'project-' + Date.now();
     setProjectId(id);
     setDataset('新分析项目');
+    setProjectNotes('');
+    setWorkspaceEmpty(false);
     setCandidateLimit(null);
     setPageSize(20);
     setIsDemo(false);
@@ -1144,6 +1194,50 @@ export default function Home() {
     window.setTimeout(() => {
       suppressDirty.current = false;
     }, 500);
+  }
+  function clearWorkspace() {
+    suppressDirty.current = true;
+    setWorkspaceEmpty(true); setProjectId('project-' + crypto.randomUUID());
+    setDataset('未打开项目'); setProjectNotes(''); setRaw('');
+    setRows([]); setAllRows([]); setRecords([]); setClusters([]); setIssues([]); setWarnings([]);
+    setSelected([]); setExcluded([]); setNotes({}); setPoses({}); setReceptors([]); setInteractionCache({});
+    setActive(null); setLastSavedAt(null); setHasUnsaved(false); setCreatingProject(false); setMetadataOpen(false);
+    window.setTimeout(() => { suppressDirty.current = false; }, 500);
+  }
+  async function changeDirectory() {
+    if (busy || batchBusy || directoryBusy) return;
+    if (hasUnsaved && !isDemo && rows.length) { setMessage('请先保存当前项目，再更换项目目录。'); return; }
+    setDirectoryBusy(true);
+    try { const name = await chooseDirectory(); setDirectoryLabel(name); setClosedIds([]); setOpenIds([]); await refreshProjects();
+      if (rows.length && !isDemo) { setProjectId('project-' + crypto.randomUUID()); setPendingMetadataSave(true); }
+      else clearWorkspace(); }
+    catch (e) { if ((e as Error).name !== 'AbortError') setMessage((e as Error).message); }
+    finally { setDirectoryBusy(false); }
+  }
+  async function rescanDirectory() {
+    setDirectoryBusy(true);
+    try {
+      if (directoryName() && !(await directoryPermission(true))) throw Error('未获得目录读写授权。');
+      await refreshProjects();
+    } catch (e) { setMessage((e as Error).message); }
+    finally { setDirectoryBusy(false); }
+  }
+  async function finishClose(save: boolean) {
+    if (!closeTarget || busy || batchBusy) return;
+    const target = closeTarget;
+    if (save && target === projectId && rows.length && !(await saveToWorkspace(true))) return;
+    setClosedIds((ids) => [...ids, target, ...(save && target === projectId ? [savedProjectId.current] : [])]);
+    if (target === projectId) clearWorkspace();
+    setCloseTarget(null);
+  }
+  useEffect(() => {
+    if (!pendingMetadataSave || busy) return;
+    setPendingMetadataSave(false);
+    void saveToWorkspace().then((ok) => { if (ok) { setMetadataOpen(false); setCreatingProject(false); } });
+  }, [pendingMetadataSave, busy]);
+  function confirmMetadata() {
+    if (!metadataName.trim()) { setMessage('请填写项目名称。'); return; }
+    setDataset(metadataName.trim()); setProjectNotes(metadataNotes.trim()); setPendingMetadataSave(true);
   }
   function exportRows(which: 'selected' | 'all') {
     const activeKeys = new Set(rows.map((r) => r.key));
@@ -1286,14 +1380,13 @@ export default function Home() {
             </div>
           </div>
           <div className="project-tabs" role="tablist" aria-label="已保存项目">
-            {[...projects]
+            {[...projects].filter((project) => !closedIds.includes(project.id) && (project.id === projectId || openIds.includes(project.id)))
               .sort(
                 (a, b) =>
                   Number(b.id === projectId) - Number(a.id === projectId),
               )
-              .slice(0, 6)
               .map((project) => (
-                <button
+                <div className="project-tab-item" key={project.id}><button
                   role="tab"
                   aria-selected={project.id === projectId}
                   key={project.id}
@@ -1305,16 +1398,25 @@ export default function Home() {
                   <span>
                     {project.moleculeCount} 分子 · {project.selectedCount} 候选
                   </span>
-                </button>
+                </button><button className="project-close" aria-label={"关闭项目 " + project.name} disabled={busy || batchBusy} onClick={() => setCloseTarget(project.id)}>×</button></div>
               ))}
-            {!projects.some((project) => project.id === projectId) && (
-              <button className="active" role="tab" aria-selected="true">
+            {!workspaceEmpty && !projects.some((project) => project.id === projectId) && (
+              <div className="project-tab-item"><button className="active" role="tab" aria-selected="true">
                 <b>{dataset}</b>
                 <span>{rows.length} 分子 · 当前项目</span>
-              </button>
+              </button><button className="project-close" aria-label={"关闭项目 " + dataset} disabled={busy || batchBusy} onClick={() => setCloseTarget(projectId)}>×</button></div>
             )}
           </div>
+          <div className="project-directory">
+            <div><b>项目目录：{directoryLabel || '未设置'}</b><span>{directoryStatus}</span></div>
+            <button className="btn small" disabled={busy || directoryBusy || batchBusy} onClick={() => void changeDirectory()}>选择项目目录</button>
+            <button className="btn small" disabled={busy || directoryBusy} onClick={() => void rescanDirectory()}>授权并检索</button>
+            <label>浏览项目<select aria-label="浏览项目目录文件" value="" disabled={busy || directoryBusy} onChange={(e) => { if(e.target.value) void switchProject(e.target.value); }}><option value="">选择项目文件打开…</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name} · {String(project.payload.projectNotes || '无备注')}</option>)}</select></label>
+            <small>缓存位置：浏览器独立存储，与项目目录分开。目录按 JSON 项目文件检索；关闭标签不会删除文件。</small>
+            {!!directoryWarnings.length && <details><summary>跳过 {directoryWarnings.length} 个非项目或无效文件</summary>{directoryWarnings.map((warning) => <p key={warning}>{warning}</p>)}</details>}
+          </div>
           <div className="project-actions">
+            <button className="btn small" disabled={!rows.length || busy} onClick={() => { setMetadataName(dataset); setMetadataNotes(projectNotes); setCreatingProject(false); setMetadataOpen(true); }}>项目名称与备注</button>
             <button
               className="btn small"
               onClick={() => void newProject()}
@@ -1327,7 +1429,7 @@ export default function Home() {
               onClick={() => void saveToWorkspace()}
               disabled={!rows.length || busy}
             >
-              <Save size={14} /> 保存到本机
+              <Save size={14} /> {directoryLabel ? '保存到项目目录' : '保存到浏览器'}
             </button>
           </div>
         </section>
@@ -1335,11 +1437,10 @@ export default function Home() {
           <div className="demo-banner">
             <span>
               <FlaskConical size={15} />
-              <b>演示数据</b> · 40 条示例记录，分数为模拟值。导入你的 2604
-              个分子后开始正式筛选。
+              <b>上传分子</b> · 在此处上传分子，创建分析项目。当前演示评分为模拟值。
             </span>
             <button onClick={() => setImportOpen(true)} disabled={busy}>
-              导入我的数据 <ArrowUpRight size={15} />
+              上传分子 <ArrowUpRight size={15} />
             </button>
           </div>
         )}
@@ -2606,6 +2707,19 @@ export default function Home() {
           setViewOpen(false);
         }}
       />
+      <Dialog open={metadataOpen} onOpenChange={(open) => { if (!creatingProject) setMetadataOpen(open); }}>
+        <DialogContent><DialogHeader><DialogTitle>{creatingProject ? '确认新项目' : '项目名称与备注'}</DialogTitle><DialogDescription>确认项目名称与备注后保存。{directoryLabel ? '保存目录：' + directoryLabel : '尚未指定目录，将先保存到浏览器；之后可选择项目目录保存文件。'}</DialogDescription></DialogHeader>
+          <label>项目名称<input className="project-meta-input" aria-label="确认项目名称" value={metadataName} onChange={(e) => setMetadataName(e.target.value)} maxLength={160} /></label>
+          <label>项目备注<textarea className="project-meta-input" aria-label="项目备注" value={metadataNotes} onChange={(e) => setMetadataNotes(e.target.value)} placeholder="研究目的、数据来源、操作者或分析说明（可留空）" /></label>
+          <button className="btn primary" disabled={busy || pendingMetadataSave || !metadataName.trim()} onClick={confirmMetadata}>确认并保存项目</button>
+          {creatingProject && <button className="btn" onClick={() => { setMetadataOpen(false); setCloseTarget(projectId); }}>放弃新项目…</button>}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!closeTarget} onOpenChange={(open) => { if(!open) setCloseTarget(null); }}>
+        <DialogContent><DialogHeader><DialogTitle>关闭项目前是否保存？</DialogTitle><DialogDescription>保存后关闭会保留最新修改；不保存关闭会放弃当前未保存更改。磁盘项目文件不会被删除。</DialogDescription></DialogHeader>
+          <div className="actions"><button className="btn primary" disabled={busy} onClick={() => void finishClose(true)}>保存并关闭</button><button className="btn" disabled={busy} onClick={() => void finishClose(false)}>不保存关闭</button><button className="btn" onClick={() => setCloseTarget(null)}>取消</button></div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={importOpen} onOpenChange={(v) => !busy && setImportOpen(v)}>
         <DialogContent className="import-dialog">
           <DialogHeader>
@@ -2740,9 +2854,9 @@ export default function Home() {
           )}
           <div className="import-footer">
             <span className="micro">
-              载入新数据会替换当前结果。
+              导入分子将创建独立项目。
               <br />
-              保留现有复核记录请先保存项目。
+              分析完成后请确认项目名称与备注。
             </span>
             <button
               className="btn primary"

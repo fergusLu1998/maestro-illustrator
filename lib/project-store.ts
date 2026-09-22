@@ -1,3 +1,4 @@
+import { directoryName, readDirectoryProject, scanProjects, writeDirectoryProject } from './project-directory';
 export type StoredProject = {
   id: string;
   name: string;
@@ -44,16 +45,21 @@ async function transact<T>(
 }
 
 export async function putProject(project: StoredProject) {
-  await transact('readwrite', (store) => store.put(project));
+  project = { ...project, id: await writeDirectoryProject(project.id, project.payload) };
+  try { await transact('readwrite', (store) => store.put(project)); }
+  catch (error) { if (!directoryName()) throw error; console.warn('项目文件已保存，浏览器缓存写入失败。'); }
+  return project;
 }
 
 export async function getProject(id: string) {
+  if (directoryName()) return readDirectoryProject(id);
   return transact<StoredProject | undefined>('readonly', (store) =>
     store.get(id),
   );
 }
 
 export async function listProjects() {
+  if (directoryName()) return (await scanProjects()).entries;
   const projects = await transact<StoredProject[]>('readonly', (store) =>
     store.getAll(),
   );

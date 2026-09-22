@@ -117,7 +117,7 @@ export function parseInput(text: string): Parsed {
   if (new Set(headers).size !== headers.length)
     throw Error('表头含重复列名，请先使各列名唯一。');
   if (rows.length > 5000)
-    throw Error('单次最多分析 5000 行；你的 2604 个分子可一次导入。');
+    throw Error('单次最多分析 5000 行，请分批导入。');
   const mapping = {} as Mapping;
   for (const key of Object.keys(aliases) as (keyof Mapping)[])
     mapping[key] = headers.find((h) => aliases[key].includes(clean(h))) || '';

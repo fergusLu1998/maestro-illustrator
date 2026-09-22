@@ -1,6 +1,6 @@
 {
   "name": "maestro-illustrator",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -11,7 +11,7 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint",
     "format": "oxfmt",
-    "test": "node scripts/test-analysis.mjs",
+    "test": "node scripts/test-analysis.mjs && node scripts/test-project-directory.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
