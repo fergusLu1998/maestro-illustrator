@@ -1,8 +1,7 @@
-"""Local-only Maestro Illustrator adapter. Run with SCHRODINGER/run.exe python3.
+"""Local-only Pocket Atlas adapter. Run with SCHRODINGER/run.exe python3.
 Calls installed vendor APIs; contains no redistributed Schrodinger code.
 """
 import argparse
-import base64
 import json
 import math
 import secrets
@@ -14,7 +13,6 @@ import webbrowser
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from schrodinger import structure
@@ -23,7 +21,7 @@ from schrodinger.structutils.interactions import hbond
 from schrodinger.rdkit import rdkit_adapter
 from rdkit import Chem
 
-ORIGINS = {'http://localhost:3000', 'http://localhost:3000', 'http://127.0.0.1:3000'}
+ORIGINS = {'https://pocket-atlas.ferguslu.chatgpt.site', 'http://localhost:3000', 'http://127.0.0.1:3000'}
 LOCK = threading.Lock()
 DATASETS = OrderedDict()
 CACHE = {}
@@ -203,7 +201,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/handshake' and self.allowed():
             self.send_json(200,dict(format='pocket-atlas-connection-v1',url='http://127.0.0.1:'+str(self.server.server_address[1]),token=TOKEN))
             return
-        if not self.authorized():self.send_json(403,dict(error='需要本次启动的连接文件'));return
+        if not self.authorized():self.send_json(403,dict(error='本机桥接会话无效，请重新运行 Pocket Atlas 启动器'));return
         self.send_json(200,dict(engine='Schrodinger native Python',ready=True,protocol=2))
     def do_POST(self):
         if not self.authorized():self.send_json(403,dict(error='连接失效或来源不受支持'));return
@@ -225,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:self.send_json(400,dict(error=str(exc)))
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8765);parser.add_argument('--connection-file',default='work/schrodinger-connection.json');parser.add_argument('--open-site',action='store_true')
+    parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8765);parser.add_argument('--open-site',action='store_true');parser.add_argument('--site-url',default='https://pocket-atlas.ferguslu.chatgpt.site/')
     args=parser.parse_args()
     try:
         server=LocalServer(('127.0.0.1',args.port),Handler)
@@ -234,14 +232,9 @@ if __name__=='__main__':
         with urlopen('http://127.0.0.1:'+str(args.port)+'/handshake',timeout=3) as response:
             existing=json.load(response)
         if existing.get('format') != 'pocket-atlas-connection-v1': raise ValueError('Port is occupied by another service')
-        if args.open_site: webbrowser.open('http://localhost:3000/')
-        print('Maestro Illustrator local engine is already running; the workbench reconnects automatically.',flush=True)
+        if args.open_site: webbrowser.open(args.site_url)
+        print('Pocket Atlas bridge is already running; the workbench reconnects automatically.',flush=True)
         sys.exit(0)
-    path=Path(args.connection_file);path.parent.mkdir(parents=True,exist_ok=True)
-    connection=dict(format='pocket-atlas-connection-v1',url='http://127.0.0.1:'+str(args.port),token=TOKEN)
-    path.write_text(json.dumps(connection))
-    print('Local engine ready. Connection file: '+str(path.resolve()),flush=True)
-    if args.open_site:
-        encoded=base64.urlsafe_b64encode(json.dumps(connection,separators=(',',':')).encode()).decode().rstrip('=')
-        webbrowser.open('http://localhost:3000/#pocket-atlas-connection='+encoded)
+    print('Pocket Atlas bridge ready; the workbench discovers it automatically.',flush=True)
+    if args.open_site: webbrowser.open(args.site_url)
     server.serve_forever()

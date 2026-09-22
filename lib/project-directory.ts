@@ -6,7 +6,7 @@ export type ProjectDirectory = FileSystemDirectoryHandle & {
 export type ProjectDocument = { format: string; name: string; raw: string; mapping: { smiles: string }; selected: string[]; [key: string]: unknown };
 export function validateProjectDocument(value: unknown): asserts value is ProjectDocument {
   const p = value as ProjectDocument;
-  if (!p || p.format !== 'pocket-atlas-project-v1' || typeof p.name !== 'string' || typeof p.raw !== 'string' || !p.mapping || typeof p.mapping.smiles !== 'string' || !Array.isArray(p.selected) || !Array.isArray(p.excluded) || !p.notes || !Number.isFinite(p.threshold) || Number(p.threshold) < .1 || Number(p.threshold) > 1) throw Error('不是有效的 Maestro Illustrator 项目');
+  if (!p || p.format !== 'pocket-atlas-project-v1' || typeof p.name !== 'string' || typeof p.raw !== 'string' || !p.mapping || typeof p.mapping.smiles !== 'string' || !Array.isArray(p.selected) || !Array.isArray(p.excluded) || !p.notes || !Number.isFinite(p.threshold) || Number(p.threshold) < .1 || Number(p.threshold) > 1) throw Error('不是有效的 Pocket Atlas 项目');
 }
 export type DirectoryEntry = { id: string; name: string; savedAt: string; moleculeCount: number; selectedCount: number; payload: Record<string, unknown>; fileName: string };
 type Binding = { handle: FileSystemFileHandle; stamp: string };
@@ -79,7 +79,7 @@ export async function writeDirectoryProject(id: string, payload: Record<string, 
   if (!binding) {
     if (id.startsWith('file:')) throw Error('原项目文件未找到，请重新检索目录并打开项目，或下载当前备份。');
     const title = String(payload.name || 'Project').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/[. ]+$/g, '').slice(0, 80) || 'Project';
-    const name = 'MaestroIllustrator_' + title + '_' + crypto.randomUUID() + '.json';
+    const name = 'PocketAtlas_' + title + '_' + crypto.randomUUID() + '.json';
     const handle = await directory.getFileHandle(name, { create: true });
     id = 'file:' + name; binding = { handle, stamp: '' };
   }

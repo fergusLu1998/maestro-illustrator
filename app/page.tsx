@@ -224,8 +224,7 @@ export default function Home() {
     [interactionCache, setInteractionCache] = useState<
       Record<string, InteractionResult>
     >({});
-  const connectionFile = useRef<HTMLInputElement>(null),
-    receptorFile = useRef<HTMLInputElement>(null);
+  const receptorFile = useRef<HTMLInputElement>(null);
   const [poses, setPoses] = useState<Record<string, Structure>>({}),
     [receptors, setReceptors] = useState<Structure[]>([]),
     [receptorIndex, setReceptorIndex] = useState(0),
@@ -294,30 +293,29 @@ export default function Home() {
     }
   }, []);
 
+  const connectLocalSchrodinger = useCallback(async (notify = false) => {
+    try {
+      const c = await discoverLocalEngine();
+      setConnection((old) => (old?.token === c.token ? old : c));
+      setEngineStatus('Schrödinger 已自动连接');
+      if (notify) setMessage('已检索到本机 Schrödinger，原生结构与互作分析已启用。');
+      return true;
+    } catch {
+      setConnection(null);
+      setEngineStatus('未检测到 Schrödinger');
+      if (notify)
+        setMessage(
+          '未检测到本机 Schrödinger。分子聚类可直接使用；需要原生结构与互作分析时，请下载并运行 Pocket Atlas 启动器。',
+        );
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     void (async () => {
       try { setDirectoryLabel(await restoreDirectory()); await refreshProjects(); }
       catch (e) { setDirectoryStatus((e as Error).message); }
     })();
-    let saved = sessionStorage.getItem('pocket-atlas-engine');
-    const prefix = '#pocket-atlas-connection=';
-    if (window.location.hash.startsWith(prefix)) {
-      try {
-        const encoded = window.location.hash.slice(prefix.length);
-        const padded = encoded + '='.repeat((4 - (encoded.length % 4)) % 4);
-        saved = decodeURIComponent(
-          escape(atob(padded.replace(/-/g, '+').replace(/_/g, '/'))),
-        );
-        sessionStorage.setItem('pocket-atlas-engine', saved);
-        history.replaceState(
-          null,
-          '',
-          window.location.pathname + window.location.search,
-        );
-      } catch {
-        saved = null;
-      }
-    }
     let checking = false,
       alive = true;
     const reconnect = async () => {
@@ -327,13 +325,11 @@ export default function Home() {
         const c = await discoverLocalEngine();
         if (!alive) return;
         setConnection((old) => (old?.token === c.token ? old : c));
-        setEngineStatus('Schrödinger 已连接');
-        sessionStorage.setItem('pocket-atlas-engine', JSON.stringify(c));
+        setEngineStatus('Schrödinger 已自动连接');
       } catch {
         if (alive) {
           setConnection(null);
-          setEngineStatus('等待本机引擎');
-          sessionStorage.removeItem('pocket-atlas-engine');
+          setEngineStatus('未检测到 Schrödinger');
         }
       } finally {
         checking = false;
@@ -780,29 +776,6 @@ export default function Home() {
       setMessage((e as Error).message);
     }
   }
-  async function connectEngine(file: File) {
-    try {
-      const c = JSON.parse(await file.text());
-      if (
-        c.format !== 'pocket-atlas-connection-v1' ||
-        typeof c.token !== 'string'
-      )
-        throw Error('请选择本地引擎生成的连接文件');
-      setEngineStatus('连接中…');
-      await engineRequest(c, '/health');
-      setConnection({ url: c.url, token: c.token });
-      sessionStorage.setItem(
-        'pocket-atlas-engine',
-        JSON.stringify({ url: c.url, token: c.token }),
-      );
-      setEngineStatus('Schrödinger 已连接');
-      setMessage('本地原生分析已连接。重新导入 MAEGZ 后可计算五类互作。');
-    } catch (e) {
-      setEngineStatus('未连接');
-      setConnection(null);
-      setMessage((e as Error).message);
-    }
-  }
   async function readStructures(
     file: File,
   ): Promise<{ structures: Structure[]; warnings: string[] }> {
@@ -1036,7 +1009,7 @@ export default function Home() {
     const payload = projectPayload();
     void saveToWorkspace(true);
     download(
-      'MaestroIllustrator_' + dataset + '.json',
+      'PocketAtlas_' + dataset + '.json',
       JSON.stringify(payload, null, 2),
       'application/json',
     );
@@ -1062,7 +1035,7 @@ export default function Home() {
         !p.notes ||
         Object.values(p.notes).some((x) => typeof x !== 'string')
       )
-        throw Error('不是受支持的 Maestro Illustrator 项目文件');
+        throw Error('不是受支持的 Pocket Atlas 项目文件');
       suppressDirty.current = true;
       setProjectNotes(typeof p.projectNotes === 'string' ? p.projectNotes : '');
       setWorkspaceEmpty(false);
@@ -1300,7 +1273,7 @@ export default function Home() {
         <div className="brand">
           <Atom size={31} />
           <div>
-            Maestro Illustrator<small>MOLECULAR SELECTION</small>
+            Pocket Atlas<small>MOLECULAR SELECTION</small>
           </div>
         </div>
         <div className="top-meta">
@@ -1530,9 +1503,9 @@ export default function Home() {
               <span className="tag">{engineStatus}</span>
               <button
                 className="btn small"
-                onClick={() => connectionFile.current?.click()}
+                onClick={() => void connectLocalSchrodinger(true)}
               >
-                {connection ? '已启用原生分析' : '启用本机 Schrödinger'}
+                {connection ? 'Schrödinger 已启用' : '检索并自动连接 Schrödinger'}
               </button>
               <button
                 className="btn small"
@@ -1570,26 +1543,15 @@ export default function Home() {
               · {Object.keys(poses).length} 条配体姿态
             </p>
             <details>
-              <summary>首次连接与本机引擎</summary>
+              <summary>Schrödinger 自动连接</summary>
               <p>
-                首次使用时下载并运行本机引擎，再选择生成的连接文件；同一浏览器会话会自动复用连接。之后直接在站内导入和浏览
-                MAEGZ，打开复合物时自动补算未缓存的五类互作。结构只在你的电脑中处理。
+                使用 Pocket Atlas 启动器：首次运行选择 Schrödinger 安装目录，之后启动时自动桥接并打开工作台，无需连接文件。未安装
+                Schrödinger 时可继续使用分子聚类；需要原生 MAEGZ 与互作分析时再运行启动器配置。
               </p>
-              <a className="btn small" href="/local-engine.zip" download>
-                下载本机引擎
+              <a className="btn small" href="/pocket-atlas-launcher.zip" download>
+                下载 Pocket Atlas 启动器
               </a>
             </details>
-            <input
-              hidden
-              ref={connectionFile}
-              type="file"
-              accept=".json"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void connectEngine(f);
-                e.target.value = '';
-              }}
-            />
             <input
               hidden
               ref={receptorFile}
@@ -2683,7 +2645,7 @@ export default function Home() {
         <footer className="footer">
           <span>
             <Atom size={13} />
-            Maestro Illustrator · RDKit {version || 'loading'} · Morgan / Tanimoto /
+            Pocket Atlas · RDKit {version || 'loading'} · Morgan / Tanimoto /
             Butina
           </span>
           <span>
@@ -2750,7 +2712,7 @@ export default function Home() {
                 className="text-button"
                 onClick={() =>
                   download(
-                    'MaestroIllustrator_导入模板.csv',
+                    'PocketAtlas_导入模板.csv',
                     '\uFEFFid,smiles,docking,mmgbsa,supplier,catalog_id\r\nCMP-001,CC(=O)Oc1ccccc1C(=O)O,,,供应商名称,货号\r\n',
                     'text/csv;charset=utf-8',
                   )

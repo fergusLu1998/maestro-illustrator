@@ -1,20 +1,20 @@
-# Maestro Illustrator
+# Pocket Atlas
 
 **分子筛选与蛋白–配体互作分析工作台 · Molecular screening and protein–ligand interaction workbench**
 
-[在线使用 / Open workbench](https://pocket-atlas.ferguslu.chatgpt.site/) · [源码 / Source code](https://github.com/fergusLu1998/maestro-illustrator) · [中文完整手册 / Detailed Chinese guide](docs/USER_GUIDE.zh-CN.md)
+[在线使用 / Open workbench](https://pocket-atlas.ferguslu.chatgpt.site/) · [源码 / Source code](https://github.com/fergusLu1998/pocket-atlas) · [中文完整手册 / Detailed Chinese guide](docs/USER_GUIDE.zh-CN.md)
 
-Maestro Illustrator 将分子相似性、骨架聚类、已有 Docking / MM/GBSA 评分、三维结合姿态和人工候选筛选整合到浏览器中，适用于虚拟筛选之后的结构复核和候选缩减。
+Pocket Atlas 将分子相似性、骨架聚类、已有 Docking / MM/GBSA 评分、三维结合姿态和人工候选筛选整合到浏览器中，适用于虚拟筛选之后的结构复核和候选缩减。
 
-Maestro Illustrator combines molecular similarity, scaffold clustering, existing docking/MM/GBSA scores, 3D binding poses, and manual candidate selection in a browser. It supports structural review and candidate prioritization after virtual screening.
+Pocket Atlas combines molecular similarity, scaffold clustering, existing docking/MM/GBSA scores, 3D binding poses, and manual candidate selection in a browser. It supports structural review and candidate prioritization after virtual screening.
 
-**当前功能版本 / Current feature version: v13 · 0.13.0.** README 提供中英对照；当前工作台界面主要使用中文。 / This README is bilingual; the current workbench interface is primarily in Chinese.
+**当前正式版本 / Current release: v1.0.1.** README 提供中英对照；当前工作台界面主要使用中文。 / This README is bilingual; the current workbench interface is primarily in Chinese.
 
 ## 1. 在线使用 / Use online
 
-打开 [Maestro Illustrator](https://pocket-atlas.ferguslu.chatgpt.site/)，无需安装 Node.js 即可使用浏览器中的结构分析和项目管理。桌面 Chrome 或 Edge 可提供项目文件夹读写支持；首次使用需由操作者选择目录并授权。
+打开 [Pocket Atlas](https://pocket-atlas.ferguslu.chatgpt.site/)，无需安装 Node.js 即可使用浏览器中的结构分析和项目管理。桌面 Chrome 或 Edge 可提供项目文件夹读写支持；首次使用需由操作者选择目录并授权。
 
-Open [Maestro Illustrator](https://pocket-atlas.ferguslu.chatgpt.site/) to use browser-based structure analysis and project management without installing Node.js. Desktop Chrome or Edge supports project-folder access; the operator must select and authorize the folder on first use.
+Open [Pocket Atlas](https://pocket-atlas.ferguslu.chatgpt.site/) to use browser-based structure analysis and project management without installing Node.js. Desktop Chrome or Edge supports project-folder access; the operator must select and authorize the folder on first use.
 
 网站公开提供程序界面，不提供共享研究项目库。不同用户的浏览器缓存和本地项目目录彼此独立。不要将演示分子的模拟评分用于实验或订购决策。
 
@@ -40,8 +40,8 @@ The public website provides the application, not a shared research-project datab
 需要 **Node.js 22.13+**、npm 和 Git。 / Requires **Node.js 22.13+**, npm, and Git.
 
 ```powershell
-git clone https://github.com/fergusLu1998/maestro-illustrator.git
-cd maestro-illustrator
+git clone https://github.com/fergusLu1998/pocket-atlas.git
+cd pocket-atlas
 npm ci
 npm run dev
 ```
@@ -50,31 +50,27 @@ npm run dev
 
 Open **http://localhost:3000/** and keep the terminal running. Hosting source code and hosting a running website are separate: cloning the repository does not publish a website.
 
-## 4. 可选本机引擎 / Optional local engine
+## 4. Schrödinger 自动桥接 / Automatic Schrödinger bridge
 
 二维结构分析、聚类和项目目录管理不需要 Schrödinger。浏览器可读取受支持的结构文件；要使用 Schrödinger 原生读取和重新计算原生互作，使用者需自行安装并授权 Schrödinger。已有项目中的缓存互作可以离线阅览，无需重新计算。
 
 2D structure analysis, clustering, and project-folder management do not require Schrödinger. The browser can read supported structure files; Schrödinger-native reading and new native interaction calculations require a separately installed and licensed Schrödinger environment. Cached interactions in a saved project remain viewable without recalculation.
 
-**本地源码版本 / Local source checkout:** 在第二个 PowerShell 终端运行以下命令，将安装路径替换为自己的路径。也可在网页服务启动后双击 `Start Maestro Illustrator.cmd`，按提示选择安装目录。
+双击 `Start Pocket Atlas.cmd` 即可启动。首次使用时，启动器会询问是否连接已安装并授权的 Schrödinger：选择“是”后指定包含 `run.exe` 的安装目录；该目录保存在当前 Windows 用户的本地设置中。以后运行同一个启动器时，它会在后台自动启动安全的回环桥接并打开工作台，不需要连接文件，也不需要手动执行 Schrödinger Python 命令。
 
-In a second PowerShell terminal, run the command below with your own installation path. Alternatively, after starting the web server, double-click `Start Maestro Illustrator.cmd` and follow the installation-directory prompt.
+Double-click `Start Pocket Atlas.cmd`. On first use, choose whether to connect a licensed Schrödinger installation. If enabled, select the installation folder containing `run.exe`; Pocket Atlas stores that choice in the current Windows user's local settings. Later launches automatically start the loopback bridge in the background and open the workbench—without a connection file or a manual Schrödinger Python command.
 
-```powershell
-& 'C:\Path\To\Schrodinger\run.exe' python3 .\scripts\schrodinger_bridge.py --connection-file .\scripts\schrodinger-connection.json
-```
+没有安装 Schrödinger，或只进行 SMILES/SDF 聚类时，可在首次提示中选择“否”。工作台仍可正常使用二维分析、聚类、候选筛选与项目管理。需要重新选择安装目录时运行：
 
-**在线工作台 / Hosted workbench:** 从网页的“启用本机 Schrödinger”入口下载并解压适配器。其服务允许在线工作台连接；GitHub 中的适配器默认面向 `localhost:3000`。在解压目录中，可直接指定自己的 Schrödinger 路径启动：
-
-Download and extract the adapter through “启用本机 Schrödinger” (Enable local Schrödinger) on the hosted workbench. That adapter permits the hosted origin; the adapter in this repository targets `localhost:3000` by default. From the extracted folder, start it with your own Schrödinger path:
+If Schrödinger is unavailable, or only SMILES/SDF clustering is needed, select **No** during first-time setup. 2D analysis, clustering, candidate selection, and project management remain available. To choose or change an installation later, run:
 
 ```powershell
-& 'C:\Path\To\Schrodinger\run.exe' python3 .\schrodinger_bridge.py --connection-file .\schrodinger-connection.json --open-site
+.\Start Pocket Atlas.cmd -Configure
 ```
 
-服务只监听本机 `127.0.0.1:8765`，使用会话令牌；保持服务终端打开，并在浏览器提示时允许访问本地服务。不要公开或提交连接 JSON。仓库不包含 Schrödinger 软件、许可证或安装文件。
+在线工作台中的“检索并自动连接 Schrödinger”可随时重新检测已经运行的桥接；页面也提供 Windows 启动器下载。桥接只监听本机 `127.0.0.1:8765`，每次启动生成新的会话令牌。仓库与启动器不包含 Schrödinger 软件、许可证或安装文件。
 
-The service listens only on `127.0.0.1:8765` and uses a session token. Keep its terminal open and allow local-service access when prompted by the browser. Do not publish or commit connection JSON files. Schrödinger software, licenses, and installers are not included.
+The hosted workbench can re-detect an already running bridge at any time through **Detect and connect Schrödinger**, and provides the Windows launcher as a download. The bridge listens only on `127.0.0.1:8765` and creates a new session token for each launch. Schrödinger software, licenses, and installers are not included.
 
 ## 5. 典型工作流程 / Typical workflow
 
@@ -133,7 +129,6 @@ docs/         使用和维护文档 / Usage and maintenance documentation
 ## 9. 文档与许可证 / Documentation and licensing
 
 - [完整中文使用说明 / Detailed Chinese user guide](docs/USER_GUIDE.zh-CN.md)
-- [GitHub 更新指南（中文） / GitHub maintenance guide (Chinese)](docs/GITHUB_UPLOAD.zh-CN.md)
 - [第三方组件与许可证 / Third-party notices and licenses](THIRD_PARTY_NOTICES.md)
 
 应用代码尚未指定开源许可证；公开仓库不等同于授予任意修改或再分发许可。第三方组件遵循各自许可证，Schrödinger 需单独安装并获得授权。

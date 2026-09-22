@@ -39,9 +39,6 @@ next-env.d.ts
 *.tsbuildinfo
 scripts/schrodinger-connection.json
 
-__pycache__/
-*.pyc
-
 # Research data and machine-specific configuration
 /.openai/
 /data/
@@ -52,8 +49,10 @@ __pycache__/
 *.pdb
 *.mol2
 *.cxs
-PocketAtlas_*.json
 **/schrodinger-connection.json
 *.bak
 
-MaestroIllustrator_*.json
+__pycache__/
+*.pyc
+
+PocketAtlas_*.json

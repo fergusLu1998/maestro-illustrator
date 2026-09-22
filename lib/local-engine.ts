@@ -12,7 +12,7 @@ export async function discoverLocalEngine(
     data.format !== 'pocket-atlas-connection-v1' ||
     typeof data.token !== 'string'
   )
-    throw Error('本机 Schrödinger 尚未启动');
+    throw Error('未检测到本机 Schrödinger');
   return { url: data.url, token: data.token };
 }
 export type InteractionPoint = {
@@ -101,7 +101,7 @@ export async function engineRequest(
     });
   } catch {
     throw Error(
-      '无法连接本地 Schrödinger。请使用工作台启动器启动引擎，页面会自动重连；如浏览器询问，请允许访问本地网络。',
+      '无法连接本机 Schrödinger。请运行 Pocket Atlas 启动器，页面会自动重连；如浏览器询问，请允许访问本地网络。',
     );
   }
   const data: any = await response.json();
